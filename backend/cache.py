@@ -2,10 +2,11 @@ import os
 import chromadb
 from embeddings import get_embedding
 from dotenv import load_dotenv
+import time
 
 load_dotenv()
-
-SIMILARITY_THRESHOLD = float(os.getenv("SIMILARITY_THRESHOLD", 0.70))
+MAX_CACHE_SIZE = 100
+SIMILARITY_THRESHOLD = float(os.getenv("SIMILARITY_THRESHOLD", 0.80))
 
 # ── Initialize ChromaDB ───────────────────────────────
 # Stores data locally in a folder called chroma_db/
@@ -58,39 +59,67 @@ def check_cache(query: str) -> dict | None:
 
     print(f"[CACHE] Best match similarity: {similarity}")
 
-    if similarity >= SIMILARITY_THRESHOLD:
-        cached_response = results["metadatas"][0][0]["response"]
-        matched_query   = results["documents"][0][0]
+   if similarity >= SIMILARITY_THRESHOLD:
+    cached_response = results["metadatas"][0][0]["response"]
+    matched_query   = results["documents"][0][0]
+    matched_id      = results["ids"][0][0]
 
-        cache_stats["hits"] += 1
-        print(f"[CACHE] HIT ✅ matched: '{matched_query}'")
+    # Update LRU timestamp
+    collection.update(
+        ids=[matched_id],
+        metadatas=[{
+            "response": cached_response,
+            "last_used": time.time()
+        }]
+    )
 
-        return {
-            "response":       cached_response,
-            "was_cached":     True,
-            "similarity":     similarity,
-            "matched_query":  matched_query,
-        }
+    cache_stats["hits"] += 1
+    print(f"[CACHE] HIT ✅ matched: '{matched_query}'")
 
+    return {
+        "response":       cached_response,
+        "was_cached":     True,
+        "similarity":     similarity,
+        "matched_query":  matched_query,
+    }
     cache_stats["misses"] += 1
     print(f"[CACHE] MISS ❌ similarity {similarity} below threshold {SIMILARITY_THRESHOLD}")
     return None
 
 
-def store_in_cache(query: str, response: str) -> None:
-    """
-    Store a query-response pair in ChromaDB.
-    """
+    def store_in_cache(query: str, response: str) -> None:
     query_embedding = get_embedding(query)
-
-    # Use the query text as the document ID (hashed)
     doc_id = str(abs(hash(query)))
 
+    # Enforce max cache size using LRU
+    current_count = collection.count()
+
+    if current_count >= MAX_CACHE_SIZE:
+        results = collection.get(include=["metadatas", "ids"])
+        ids = results["ids"]
+        metadatas = results["metadatas"]
+
+        # Sort by last_used (oldest first)
+        sorted_items = sorted(
+            zip(ids, metadatas),
+            key=lambda x: x[1].get("last_used", 0)
+        )
+
+        num_to_delete = current_count - MAX_CACHE_SIZE + 1
+        ids_to_delete = [item[0] for item in sorted_items[:num_to_delete]]
+
+        collection.delete(ids=ids_to_delete)
+        print(f"[CACHE] Removed {len(ids_to_delete)} LRU entries")
+
+    # Insert new entry with timestamp
     collection.upsert(
         ids=[doc_id],
         embeddings=[query_embedding],
         documents=[query],
-        metadatas=[{"response": response}]
+        metadatas=[{
+            "response": response,
+            "last_used": time.time()
+        }]
     )
 
     cache_stats["total_stored"] += 1
