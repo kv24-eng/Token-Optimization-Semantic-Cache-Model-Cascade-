@@ -41,7 +41,7 @@ def check_cache(query: str) -> dict | None:
     results = collection.query(
         query_embeddings=[query_embedding],
         n_results=1,
-        include=["documents", "metadatas", "distances", "ids"]
+        include=["documents", "metadatas", "distances"]
     )
 
     distance = results["distances"][0][0]
