@@ -1,3 +1,4 @@
+from memory import ConversationMemory
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
@@ -5,6 +6,10 @@ from dotenv import load_dotenv
 import time
 import sys
 import os
+
+def your_summarizer_function(text):
+    # temporary simple version
+    return "Summary: " + text[:300]
 
 # Add backend to path for imports
 sys.path.insert(0, os.path.dirname(__file__))
@@ -33,7 +38,7 @@ app.add_middleware(
 
 router  = CascadeRouter()        # smart model router
 metrics = CascadeMetrics()       # tracks all requests
-
+memory = ConversationMemory()
 
 # ── Request / Response Schemas ────────────────────────────────────────────
 
@@ -88,9 +93,14 @@ def chat(req: ChatRequest):
         raise HTTPException(status_code=400, detail="Query cannot be empty")
 
     start = time.perf_counter()
+    memory.add_message("user", req.query)
 
     # ── Step 1: Semantic Cache lookup ─────────────────────────────────────
-   cached = check_cache(req.query, smart_score=None)
+
+    context = memory.get_context()
+    full_query = "\n".join([m["content"] for m in context])
+    
+    cached = check_cache(full_query, smart_score=None)
 
     if cached:
         # ── CACHE HIT ─────────────────────────────────────────────────────
@@ -128,18 +138,23 @@ def chat(req: ChatRequest):
         )
 
     # ── Step 2: Cache MISS → CascadeRouter ───────────────────────────────
+    
     resp = handle_cache_miss(
-        query      = req.query,
+        query      = full_query,
         router     = router,
         metrics    = metrics,
         budget_usd = req.budget_usd,
     )
+
 
     if resp.error:
         raise HTTPException(status_code=502, detail=resp.error)
 
     # ── Step 3: Store answer in cache for future hits ─────────────────────
     store_in_cache(req.query, resp.answer)
+    memory.add_message("assistant", resp.answer)
+    if memory.should_summarize():
+    memory.summarize(summarizer_fn=your_summarizer_function)
 
     return ChatResponse(
         response      = resp.answer,
