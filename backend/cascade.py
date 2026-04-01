@@ -53,24 +53,24 @@ MODEL_REGISTRY: dict[ModelTier, ModelConfig] = {
         tier             = ModelTier.LIGHT,
         model_id         = "llama-3.1-8b-instant",
         max_tokens       = 1024,
-        cost_per_1k_in   = 0.0,  # Groq free tier
-        cost_per_1k_out  = 0.0,
+        cost_per_1k_in   = 0.05,  # per 1M tokens
+        cost_per_1k_out  = 0.08,
         score_threshold  = 0.0,   # catch-all lower bound
     ),
     ModelTier.MID: ModelConfig(
         tier             = ModelTier.MID,
-        model_id         = "llama-3.1-70b-versatile",
+        model_id         = "llama-3.3-70b-versatile",
         max_tokens       = 4096,
-        cost_per_1k_in   = 0.0,  # Groq free tier
-        cost_per_1k_out  = 0.0,
+        cost_per_1k_in   = 0.59,  # per 1M tokens
+        cost_per_1k_out  = 0.79,
         score_threshold  = 0.40,  # score ≥ 0.40 → use mid
     ),
     ModelTier.HEAVY: ModelConfig(
         tier             = ModelTier.HEAVY,
-        model_id         = "llama-3.1-70b-versatile",
+        model_id         = "openai/gpt-oss-120b",
         max_tokens       = 8192,
-        cost_per_1k_in   = 0.0,  # Groq free tier
-        cost_per_1k_out  = 0.0,
+        cost_per_1k_in   = 0.15,  # per 1M tokens
+        cost_per_1k_out  = 0.60,
         score_threshold  = 0.70,  # score ≥ 0.70 → use heavy
     ),
 }
