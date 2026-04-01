@@ -86,7 +86,12 @@ if submit_button and user_query:
             )
             
             if response.status_code == 200:
-                result = response.json()
+                try:
+                    result = response.json()
+                except ValueError:
+                    st.error(f"❌ Invalid response format from API")
+                    st.text(f"Response: {response.text[:500]}")
+                    st.stop()
                 
                 # Display response
                 st.success("✅ Response received")
@@ -139,7 +144,10 @@ if submit_button and user_query:
                 
             else:
                 st.error(f"Error: {response.status_code}")
-                st.write(response.json())
+                try:
+                    st.write(response.json())
+                except ValueError:
+                    st.text(f"Response: {response.text[:500]}")
                 
         except requests.exceptions.Timeout:
             st.error("⏱️ Request timeout. API might be slow or unreachable.")
@@ -173,7 +181,15 @@ if explain_query:
         )
         
         if response.status_code == 200:
-            routing = response.json()
+            try:
+                routing = response.json()
+            except ValueError:
+                st.warning(f"Could not parse routing response")
+                st.text(f"Response: {response.text[:500]}")
+                routing = None
+            
+            if routing is None:
+                st.stop()
             
             col1, col2, col3 = st.columns(3)
             
@@ -212,7 +228,12 @@ try:
     metrics_response = requests.get(f"{API_BASE_URL}/metrics", timeout=15)
     
     if metrics_response.status_code == 200:
-        metrics = metrics_response.json()
+        try:
+            metrics = metrics_response.json()
+        except ValueError:
+            st.error(f"❌ Invalid metrics response format")
+            st.text(f"Response: {metrics_response.text[:500]}")
+            st.stop()
         
         col1, col2, col3, col4 = st.columns(4)
         
@@ -274,7 +295,12 @@ with tab1:
     try:
         response = requests.get(f"{API_BASE_URL}/cache/items", timeout=15)
         if response.status_code == 200:
-            cache_data = response.json()
+            try:
+                cache_data = response.json()
+            except ValueError:
+                st.error(f"❌ Invalid cache response format")
+                st.text(f"Response: {response.text[:500]}")
+                st.stop()
             total_items = cache_data["total_items"]
             items = cache_data["items"]
             
@@ -321,7 +347,10 @@ with tab1:
                             st.divider()
         else:
             st.error(f"❌ API Error: {response.status_code}")
-            st.json(response.json())
+            try:
+                st.json(response.json())
+            except:
+                st.text(f"Response body: {response.text}")
             
     except requests.exceptions.ConnectionError:
         st.error("❌ Cannot connect to API. Make sure the backend is running on port 8000")
@@ -337,7 +366,12 @@ with tab2:
     try:
         response = requests.get(f"{API_BASE_URL}/cache/summary", timeout=15)
         if response.status_code == 200:
-            summary = response.json()
+            try:
+                summary = response.json()
+            except ValueError:
+                st.error(f"❌ Invalid summary response format")
+                st.text(f"Response: {response.text[:500]}")
+                st.stop()
             total_items = summary["total_items"]
             total_clusters = summary["total_clusters"]
             clusters = summary["clusters"]
@@ -383,10 +417,13 @@ with tab2:
                                     )
                                     if delete_response.status_code == 200:
                                         result = delete_response.json()
-                                        st.success(f"✅ Deleted {result['deleted_count']} duplicate(s)")
-                                        st.rerun()
+                                        if result.get("success"):
+                                            st.success(f"✅ Deleted {result['deleted_count']} duplicate(s)")
+                                            st.rerun()
+                                        else:
+                                            st.error(f"Delete failed: {result.get('error', 'Unknown error')}")
                                     else:
-                                        st.error(f"Delete failed: {delete_response.status_code}")
+                                        st.error(f"Delete failed: {delete_response.status_code} - {delete_response.text[:200]}")
                                 except Exception as e:
                                     st.error(f"Error: {str(e)}")
                     
@@ -413,10 +450,14 @@ with tab2:
                                             timeout=15
                                         )
                                         if del_resp.status_code == 200:
-                                            st.success("✅ Deleted")
-                                            st.rerun()
+                                            result = del_resp.json()
+                                            if result.get("success"):
+                                                st.success("✅ Deleted")
+                                                st.rerun()
+                                            else:
+                                                st.error(f"Error: {result.get('error', 'Unknown error')}")
                                         else:
-                                            st.error("Delete failed")
+                                            st.error(f"Delete failed: {del_resp.status_code} - {del_resp.text[:200]}")
                                     except Exception as e:
                                         st.error(f"Error: {str(e)}")
                     
@@ -439,10 +480,11 @@ with tab3:
         try:
             response = requests.delete(f"{API_BASE_URL}/cache/clear", timeout=15)
             if response.status_code == 200:
+                result = response.json()
                 st.success("✅ Cache cleared successfully")
                 st.rerun()
             else:
-                st.error(f"Error: {response.status_code}")
+                st.error(f"Error: {response.status_code} - {response.text[:200]}")
         except Exception as e:
             st.error(f"Failed to clear cache: {str(e)}")
     

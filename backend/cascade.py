@@ -21,6 +21,10 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import Optional
 from groq import Groq
+from dotenv import load_dotenv
+
+# Load environment variables
+load_dotenv()
 
 # ── Logging ────────────────────────────────────────────────────────────────
 logging.basicConfig(level=logging.INFO)

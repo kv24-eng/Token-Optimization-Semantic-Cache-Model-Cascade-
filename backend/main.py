@@ -84,76 +84,85 @@ def chat(req: ChatRequest):
       2. Store new answer in cache for future hits
       3. Update metrics
     """
-    if not req.query.strip():
-        raise HTTPException(status_code=400, detail="Query cannot be empty")
+    try:
+        if not req.query.strip():
+            raise HTTPException(status_code=400, detail="Query cannot be empty")
 
-    start = time.perf_counter()
+        start = time.perf_counter()
 
-    # ── Step 1: Semantic Cache lookup ─────────────────────────────────────
-   cached = check_cache(req.query, smart_score=None)
+        # ── Step 1: Semantic Cache lookup ─────────────────────────────────────
+        cached = check_cache(req.query, smart_score=None)
 
-    if cached:
-        # ── CACHE HIT ─────────────────────────────────────────────────────
-        latency_ms = round((time.perf_counter() - start) * 1000, 2)
+        if cached:
+            # ── CACHE HIT ─────────────────────────────────────────────────────
+            latency_ms = round((time.perf_counter() - start) * 1000, 2)
 
-        # Build a lightweight CascadeResponse-compatible object for metrics
-        from cascade import CascadeResponse
-        hit_resp = CascadeResponse(
-            answer        = cached["response"],
-            model_used    = "cache",
-            tier          = "cache",
-            smart_score   = 0.0,
-            sub_scores    = {},
-            signals       = [],
-            input_tokens  = 0,
-            output_tokens = 0,
-            latency_ms    = latency_ms,
-            cost_usd      = 0.0,
-            cache_hit     = True,
+            # Build a lightweight CascadeResponse-compatible object for metrics
+            from cascade import CascadeResponse
+            hit_resp = CascadeResponse(
+                answer        = cached["response"],
+                model_used    = "cache",
+                tier          = "cache",
+                smart_score   = 0.0,
+                sub_scores    = {},
+                signals       = [],
+                input_tokens  = 0,
+                output_tokens = 0,
+                latency_ms    = latency_ms,
+                cost_usd      = 0.0,
+                cache_hit     = True,
+            )
+            metrics.record(hit_resp)
+
+            return ChatResponse(
+                response      = cached["response"],
+                was_cached    = True,
+                model_used    = "cache",
+                tier          = "cache",
+                smart_score   = 0.0,
+                similarity    = cached.get("similarity"),
+                matched_query = cached.get("matched_query"),
+                input_tokens  = 0,
+                output_tokens = 0,
+                latency_ms    = latency_ms,
+                cost_usd      = 0.0,
+            )
+
+        # ── Step 2: Cache MISS → CascadeRouter ───────────────────────────────
+        resp = handle_cache_miss(
+            query      = req.query,
+            router     = router,
+            metrics    = metrics,
+            budget_usd = req.budget_usd,
         )
-        metrics.record(hit_resp)
+
+        if resp.error:
+            raise HTTPException(status_code=502, detail=resp.error)
+
+        # ── Step 3: Store answer in cache for future hits ─────────────────────
+        store_in_cache(req.query, resp.answer)
 
         return ChatResponse(
-            response      = cached["response"],
-            was_cached    = True,
-            model_used    = "cache",
-            tier          = "cache",
-            smart_score   = 0.0,
-            similarity    = cached.get("similarity"),
-            matched_query = cached.get("matched_query"),
-            input_tokens  = 0,
-            output_tokens = 0,
-            latency_ms    = latency_ms,
-            cost_usd      = 0.0,
+            response      = resp.answer,
+            was_cached    = False,
+            model_used    = resp.model_used,
+            tier          = resp.tier,
+            smart_score   = resp.smart_score,
+            similarity    = None,
+            matched_query = None,
+            input_tokens  = resp.input_tokens,
+            output_tokens = resp.output_tokens,
+            latency_ms    = resp.latency_ms,
+            cost_usd      = resp.cost_usd,
         )
-
-    # ── Step 2: Cache MISS → CascadeRouter ───────────────────────────────
-    resp = handle_cache_miss(
-        query      = req.query,
-        router     = router,
-        metrics    = metrics,
-        budget_usd = req.budget_usd,
-    )
-
-    if resp.error:
-        raise HTTPException(status_code=502, detail=resp.error)
-
-    # ── Step 3: Store answer in cache for future hits ─────────────────────
-    store_in_cache(req.query, resp.answer)
-
-    return ChatResponse(
-        response      = resp.answer,
-        was_cached    = False,
-        model_used    = resp.model_used,
-        tier          = resp.tier,
-        smart_score   = resp.smart_score,
-        similarity    = None,
-        matched_query = None,
-        input_tokens  = resp.input_tokens,
-        output_tokens = resp.output_tokens,
-        latency_ms    = resp.latency_ms,
-        cost_usd      = resp.cost_usd,
-    )
+    
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"[ERROR] /chat endpoint: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Internal error: {str(e)}")
 
 
 @app.get("/metrics")
@@ -198,35 +207,55 @@ def explain_routing(query: str, budget_usd: float | None = None):
 
 @app.delete("/cache/clear")
 def clear_cache_endpoint():
-    cache_clear()
-    return {"message": "Cache cleared successfully"}
+    try:
+        cache_clear()
+        return {"message": "Cache cleared successfully"}
+    except Exception as e:
+        print(f"[ERROR] clear_cache_endpoint: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @app.get("/cache/items")
 def get_cache_items():
     """Get all items currently cached"""
-    items = get_all_cached_items()
-    return {
-        "total_items": len(items),
-        "items": items,
-    }
+    try:
+        items = get_all_cached_items()
+        return {
+            "total_items": len(items),
+            "items": items,
+        }
+    except Exception as e:
+        print(f"[ERROR] get_cache_items: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @app.get("/cache/summary")
 def cache_summary():
     """Get cache statistics with similar prompt clustering"""
-    return get_cache_summary()
+    try:
+        return get_cache_summary()
+    except Exception as e:
+        print(f"[ERROR] cache_summary: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @app.post("/cache/delete")
 def delete_items(req: DeleteItemsRequest):
     """Delete specific cache items by ID"""
-    result = delete_cache_items(req.item_ids)
-    return result
+    try:
+        result = delete_cache_items(req.item_ids)
+        return result
+    except Exception as e:
+        print(f"[ERROR] delete_items: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @app.post("/cache/delete-cluster")
 def delete_cluster_items(req: DeleteClusterRequest):
     """Delete all items in a cluster (optionally keeping the primary query)"""
-    result = delete_cluster(req.cluster_id, req.keep_primary)
-    return result
+    try:
+        result = delete_cluster(req.cluster_id, req.keep_primary)
+        return result
+    except Exception as e:
+        print(f"[ERROR] delete_cluster_items: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
