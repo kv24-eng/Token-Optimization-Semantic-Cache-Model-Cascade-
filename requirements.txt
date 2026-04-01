@@ -3,6 +3,6 @@ uvicorn
 streamlit
 chromadb
 sentence-transformers
-anthropic
+groq
 python-dotenv
 requests

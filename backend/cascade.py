@@ -20,7 +20,7 @@ import logging
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import Optional
-import anthropic
+from groq import Groq
 
 # ── Logging ────────────────────────────────────────────────────────────────
 logging.basicConfig(level=logging.INFO)
@@ -51,26 +51,26 @@ class ModelConfig:
 MODEL_REGISTRY: dict[ModelTier, ModelConfig] = {
     ModelTier.LIGHT: ModelConfig(
         tier             = ModelTier.LIGHT,
-        model_id         = "claude-haiku-4-5-20251001",
+        model_id         = "llama-3.1-8b-instant",
         max_tokens       = 1024,
-        cost_per_1k_in   = 0.00025,
-        cost_per_1k_out  = 0.00125,
+        cost_per_1k_in   = 0.0,  # Groq free tier
+        cost_per_1k_out  = 0.0,
         score_threshold  = 0.0,   # catch-all lower bound
     ),
     ModelTier.MID: ModelConfig(
         tier             = ModelTier.MID,
-        model_id         = "claude-sonnet-4-6",
+        model_id         = "llama-3.1-70b-versatile",
         max_tokens       = 4096,
-        cost_per_1k_in   = 0.003,
-        cost_per_1k_out  = 0.015,
+        cost_per_1k_in   = 0.0,  # Groq free tier
+        cost_per_1k_out  = 0.0,
         score_threshold  = 0.40,  # score ≥ 0.40 → use mid
     ),
     ModelTier.HEAVY: ModelConfig(
         tier             = ModelTier.HEAVY,
-        model_id         = "claude-opus-4-6",
+        model_id         = "llama-3.1-70b-versatile",
         max_tokens       = 8192,
-        cost_per_1k_in   = 0.015,
-        cost_per_1k_out  = 0.075,
+        cost_per_1k_in   = 0.0,  # Groq free tier
+        cost_per_1k_out  = 0.0,
         score_threshold  = 0.70,  # score ≥ 0.70 → use heavy
     ),
 }
@@ -324,7 +324,7 @@ class CascadeRouter:
     """
 
     def __init__(self, api_key: Optional[str] = None):
-        self.client   = anthropic.Anthropic(api_key=api_key or os.getenv("ANTHROPIC_API_KEY"))
+        self.client   = Groq(api_key=api_key or os.getenv("GROQ_API_KEY"))
         self.scorer   = QueryScorer()
         self.selector = ModelSelector()
 
@@ -362,16 +362,18 @@ class CascadeRouter:
         # 5c. Call API
         t0 = time.perf_counter()
         try:
-            response = self.client.messages.create(
+            response = self.client.chat.completions.create(
                 model      = model_cfg.model_id,
                 max_tokens = model_cfg.max_tokens,
-                system     = system_prompt,
-                messages   = [{"role": "user", "content": query}],
+                messages   = [
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": query}
+                ],
             )
             latency_ms   = (time.perf_counter() - t0) * 1000
-            answer       = response.content[0].text
-            input_tokens  = response.usage.input_tokens
-            output_tokens = response.usage.output_tokens
+            answer       = response.choices[0].message.content
+            input_tokens  = response.usage.prompt_tokens
+            output_tokens = response.usage.completion_tokens
             error         = None
 
         except Exception as exc:

@@ -7,7 +7,7 @@ store_in_cache(
 )
 
 # Test exact same query
-result = check_cache("How do I  my password?")
+result = check_cache("How do I reset my password?")
 print(f"Exact match: {result}")
 
 # Test semantically similar query

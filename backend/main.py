@@ -3,6 +3,11 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from dotenv import load_dotenv
 import time
+import sys
+import os
+
+# Add backend to path for imports
+sys.path.insert(0, os.path.dirname(__file__))
 
 from cache import check_cache, store_in_cache, clear_cache as cache_clear, get_cache_stats
 from cascade import CascadeRouter, CascadeMetrics, handle_cache_miss

@@ -1,8 +1,13 @@
 import os
+import sys
 import time
 import hashlib
 import chromadb
 from dotenv import load_dotenv
+
+# Add backend to path for relative imports
+sys.path.insert(0, os.path.dirname(__file__))
+
 from embeddings import get_embedding
 
 load_dotenv()
