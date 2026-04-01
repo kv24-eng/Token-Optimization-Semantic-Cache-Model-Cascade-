@@ -90,7 +90,7 @@ def chat(req: ChatRequest):
     start = time.perf_counter()
 
     # ── Step 1: Semantic Cache lookup ─────────────────────────────────────
-    cached = check_cache(req.query)
+   cached = check_cache(req.query, smart_score=None)
 
     if cached:
         # ── CACHE HIT ─────────────────────────────────────────────────────
