@@ -154,7 +154,7 @@ def chat(req: ChatRequest):
     store_in_cache(req.query, resp.answer)
     memory.add_message("assistant", resp.answer)
     if memory.should_summarize():
-    memory.summarize(summarizer_fn=your_summarizer_function)
+        memory.summarize(summarizer_fn=your_summarizer_function)
 
     return ChatResponse(
         response      = resp.answer,
