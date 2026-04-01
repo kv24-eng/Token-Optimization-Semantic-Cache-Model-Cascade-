@@ -1,3 +1,4 @@
+
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
@@ -5,6 +6,7 @@ from dotenv import load_dotenv
 import time
 import sys
 import os
+
 
 # Add backend to path for imports
 sys.path.insert(0, os.path.dirname(__file__))
@@ -88,10 +90,10 @@ def chat(req: ChatRequest):
         if not req.query.strip():
             raise HTTPException(status_code=400, detail="Query cannot be empty")
 
-        start = time.perf_counter()
+    start = time.perf_counter()
 
-        # ── Step 1: Semantic Cache lookup ─────────────────────────────────────
-        cached = check_cache(req.query, smart_score=None)
+    # ── Step 1: Semantic Cache lookup ─────────────────────────────────────
+   cached = check_cache(req.query, smart_score=None)
 
         if cached:
             # ── CACHE HIT ─────────────────────────────────────────────────────
@@ -128,19 +130,19 @@ def chat(req: ChatRequest):
                 cost_usd      = 0.0,
             )
 
-        # ── Step 2: Cache MISS → CascadeRouter ───────────────────────────────
-        resp = handle_cache_miss(
-            query      = req.query,
-            router     = router,
-            metrics    = metrics,
-            budget_usd = req.budget_usd,
-        )
+    # ── Step 2: Cache MISS → CascadeRouter ───────────────────────────────
+    resp = handle_cache_miss(
+        query      = req.query,
+        router     = router,
+        metrics    = metrics,
+        budget_usd = req.budget_usd,
+    )
 
         if resp.error:
             raise HTTPException(status_code=502, detail=resp.error)
 
-        # ── Step 3: Store answer in cache for future hits ─────────────────────
-        store_in_cache(req.query, resp.answer)
+    # ── Step 3: Store answer in cache for future hits ─────────────────────
+    store_in_cache(req.query, resp.answer)
 
         return ChatResponse(
             response      = resp.answer,

@@ -216,6 +216,21 @@ def store_in_cache(query: str, response: str) -> None:
     )
 
     cache_stats["total_stored"] += 1
+    def clear_cache() -> None:
+         global collection
+
+        chroma_client.delete_collection("semantic_cache")
+
+        collection = chroma_client.get_or_create_collection(
+            name="semantic_cache",
+            metadata={"hnsw:space": "cosine"}
+    )
+
+    cache_stats["hits"] = 0
+    cache_stats["misses"] = 0
+    cache_stats["total_stored"] = 0
+
+    print("[CACHE] Cache cleared")
 
 
 def clear_cache() -> None:
