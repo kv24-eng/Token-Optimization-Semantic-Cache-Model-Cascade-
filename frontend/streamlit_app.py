@@ -169,7 +169,7 @@ if explain_query:
         response = requests.get(
             f"{API_BASE_URL}/routing/explain",
             params=params,
-            timeout=5
+            timeout=15
         )
         
         if response.status_code == 200:
@@ -209,7 +209,7 @@ st.divider()
 st.header("📊 Metrics Dashboard")
 
 try:
-    metrics_response = requests.get(f"{API_BASE_URL}/metrics", timeout=5)
+    metrics_response = requests.get(f"{API_BASE_URL}/metrics", timeout=15)
     
     if metrics_response.status_code == 200:
         metrics = metrics_response.json()
@@ -260,17 +260,194 @@ except Exception as e:
 st.divider()
 st.header("🗑️ Cache Management")
 
-if st.button("Clear Cache", type="secondary"):
-    try:
-        response = requests.delete(f"{API_BASE_URL}/cache/clear", timeout=5)
-        if response.status_code == 200:
-            st.success("✅ Cache cleared successfully")
-        else:
-            st.error(f"Error: {response.status_code}")
-    except Exception as e:
-        st.error(f"Failed to clear cache: {str(e)}")
+tab1, tab2, tab3 = st.tabs(["View Cache", "Smart Delete", "Clear All"])
 
-st.info("ℹ️ Clearing the cache will remove all cached responses but won't affect metrics history.")
+with tab1:
+    st.subheader("Cached Items")
+    
+    # Add refresh button
+    col1, col2 = st.columns([0.7, 0.3])
+    with col2:
+        if st.button("🔄 Refresh", key="refresh_cache"):
+            st.rerun()
+    
+    try:
+        response = requests.get(f"{API_BASE_URL}/cache/items", timeout=15)
+        if response.status_code == 200:
+            cache_data = response.json()
+            total_items = cache_data["total_items"]
+            items = cache_data["items"]
+            
+            st.metric("Total Cached Items", total_items)
+            
+            if total_items == 0:
+                st.warning("⚠️ Cache is empty. Make some queries to populate the cache.")
+            else:
+                # Display as a dataframe table
+                if items:
+                    display_items = []
+                    for item in items:
+                        query_preview = item["query"][:60]
+                        if len(item["query"]) > 60:
+                            query_preview += "..."
+                        
+                        response_preview = item["response"][:80]
+                        if len(item["response"]) > 80:
+                            response_preview += "..."
+                        
+                        display_items.append({
+                            "Query": query_preview,
+                            "Response": response_preview,
+                            "Last Used": item["last_used_formatted"],
+                        })
+                    
+                    st.dataframe(display_items, use_container_width=True, hide_index=True)
+                    
+                    # Show full details on expander
+                    with st.expander("📋 View Full Details"):
+                        for idx, item in enumerate(items, 1):
+                            st.markdown(f"### Cache Item #{idx}")
+                            
+                            col1, col2 = st.columns(2)
+                            with col1:
+                                st.markdown("**Query:**")
+                                st.code(item["query"], language="text")
+                            with col2:
+                                st.markdown("**Last Used:**")
+                                st.info(item["last_used_formatted"])
+                            
+                            st.markdown("**Response:**")
+                            st.text_area("Response", value=item["response"], height=100, disabled=True, key=f"response_{idx}")
+                            st.divider()
+        else:
+            st.error(f"❌ API Error: {response.status_code}")
+            st.json(response.json())
+            
+    except requests.exceptions.ConnectionError:
+        st.error("❌ Cannot connect to API. Make sure the backend is running on port 8000")
+    except Exception as e:
+        st.error(f"❌ Error loading cache: {str(e)}")
+        st.exception(e)
+
+
+with tab2:
+    st.subheader("Delete Similar Prompts by Cluster")
+    st.info("🔍 Similar prompts are grouped together. Optionally keep the primary query and delete duplicates.")
+    
+    try:
+        response = requests.get(f"{API_BASE_URL}/cache/summary", timeout=15)
+        if response.status_code == 200:
+            summary = response.json()
+            total_items = summary["total_items"]
+            total_clusters = summary["total_clusters"]
+            clusters = summary["clusters"]
+            
+            col1, col2 = st.columns(2)
+            with col1:
+                st.metric("Total Items", total_items)
+            with col2:
+                st.metric("Similar Groups", total_clusters)
+            
+            if total_clusters == 0:
+                st.info("ℹ️ No clusters found. Add more queries to see similar prompts grouped.")
+            else:
+                st.write("---")
+                
+                # Show each cluster
+                for cluster in clusters:
+                    cluster_id = cluster["cluster_id"]
+                    primary_query = cluster["primary_query"][:70]
+                    duplicate_count = cluster["duplicate_count"]
+                    avg_similarity = cluster["avg_similarity"]
+                    
+                    col1, col2, col3, col4 = st.columns([2, 1, 1, 1])
+                    
+                    with col1:
+                        st.markdown(f"**Primary Query:** {primary_query}")
+                    with col2:
+                        st.metric("Duplicates", duplicate_count, delta=None)
+                    with col3:
+                        st.metric("Avg Similarity", f"{avg_similarity:.2f}")
+                    with col4:
+                        if duplicate_count > 0:
+                            if st.button(f"🗑️ Remove Duplicates", key=f"delete_dups_{cluster_id}"):
+                                try:
+                                    delete_response = requests.post(
+                                        f"{API_BASE_URL}/cache/delete-cluster",
+                                        json={
+                                            "cluster_id": cluster_id,
+                                            "keep_primary": True,
+                                            "reason": "Deleted duplicates via smart filter"
+                                        },
+                                        timeout=15
+                                    )
+                                    if delete_response.status_code == 200:
+                                        result = delete_response.json()
+                                        st.success(f"✅ Deleted {result['deleted_count']} duplicate(s)")
+                                        st.rerun()
+                                    else:
+                                        st.error(f"Delete failed: {delete_response.status_code}")
+                                except Exception as e:
+                                    st.error(f"Error: {str(e)}")
+                    
+                    # Show items in cluster
+                    with st.expander(f"📊 Show cluster items ({len(cluster['items'])} items)"):
+                        for item_idx, item in enumerate(cluster["items"]):
+                            item_col1, item_col2, item_col3 = st.columns([2, 1, 0.8])
+                            
+                            with item_col1:
+                                query_text = item["query"][:80]
+                                if len(item["query"]) > 80:
+                                    query_text += "..."
+                                st.caption(f"{item_idx + 1}. {query_text}")
+                            
+                            with item_col2:
+                                st.caption(item["last_used_formatted"])
+                            
+                            with item_col3:
+                                if st.button("❌", key=f"del_item_{item['id']}", help="Delete this item"):
+                                    try:
+                                        del_resp = requests.post(
+                                            f"{API_BASE_URL}/cache/delete",
+                                            json={"item_ids": [item["id"]]},
+                                            timeout=15
+                                        )
+                                        if del_resp.status_code == 200:
+                                            st.success("✅ Deleted")
+                                            st.rerun()
+                                        else:
+                                            st.error("Delete failed")
+                                    except Exception as e:
+                                        st.error(f"Error: {str(e)}")
+                    
+                    st.divider()
+        else:
+            st.error(f"❌ Failed to load clusters: {response.status_code}")
+            
+    except requests.exceptions.ConnectionError:
+        st.error("❌ Cannot connect to API")
+    except Exception as e:
+        st.error(f"❌ Error: {str(e)}")
+        st.exception(e)
+
+
+with tab3:
+    st.subheader("Clear All Cache")
+    st.warning("⚠️ This will permanently delete ALL cached items!")
+    
+    if st.button("🗑️ Clear All Cache", type="secondary"):
+        try:
+            response = requests.delete(f"{API_BASE_URL}/cache/clear", timeout=15)
+            if response.status_code == 200:
+                st.success("✅ Cache cleared successfully")
+                st.rerun()
+            else:
+                st.error(f"Error: {response.status_code}")
+        except Exception as e:
+            st.error(f"Failed to clear cache: {str(e)}")
+    
+    st.info("ℹ️ Clearing the cache will remove all cached responses but won't affect metrics history.")
+
 
 # ── Footer ───────────────────────────────────────────────────────────────
 

@@ -20,17 +20,29 @@ Write-Host "Starting Backend API..." -ForegroundColor Green
 $backendJob = Start-Job -ScriptBlock {
     Set-Location $args[0]
     Set-Location backend
-    python -m uvicorn main:app --reload --host 0.0.0.0 --port 8000
+    python -m uvicorn main:app --host 0.0.0.0 --port 8000
 } -ArgumentList (Get-Location)
 
 Write-Host "   Job ID: $($backendJob.Id)" -ForegroundColor Gray
 Write-Host "   API: http://localhost:8000" -ForegroundColor Gray
 Write-Host "   Docs: http://localhost:8000/docs" -ForegroundColor Gray
 
-# Wait a few seconds for backend to start
+# Wait for backend to fully initialize (embeddings model loads on first call)
 Write-Host ""
-Write-Host "Waiting for backend to start..." -ForegroundColor Yellow
-Start-Sleep -Seconds 3
+Write-Host "Waiting for backend to fully initialize..." -ForegroundColor Yellow
+for ($i = 1; $i -le 10; $i++) {
+    try {
+        $response = Invoke-WebRequest -Uri "http://localhost:8000/" -TimeoutSec 2 -ErrorAction Stop
+        Write-Host "✅ Backend is ready!" -ForegroundColor Green
+        break
+    } catch {
+        Write-Host "   Attempt $i/10: Still starting..." -ForegroundColor Gray
+        Start-Sleep -Seconds 1
+    }
+    if ($i -eq 10) {
+        Write-Host "⚠️  Backend taking longer than expected" -ForegroundColor Yellow
+    }
+}
 
 # Start Frontend in background job
 Write-Host ""

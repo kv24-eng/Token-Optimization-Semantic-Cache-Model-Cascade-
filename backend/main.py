@@ -9,7 +9,7 @@ import os
 # Add backend to path for imports
 sys.path.insert(0, os.path.dirname(__file__))
 
-from cache import check_cache, store_in_cache, clear_cache as cache_clear, get_cache_stats
+from cache import check_cache, store_in_cache, clear_cache as cache_clear, get_cache_stats, get_all_cached_items, cluster_similar_prompts, delete_cache_items, delete_cluster, get_cache_summary
 from cascade import CascadeRouter, CascadeMetrics, handle_cache_miss
 
 load_dotenv()
@@ -54,6 +54,17 @@ class ChatResponse(BaseModel):
     output_tokens:    int
     latency_ms:       float
     cost_usd:         float
+
+
+class DeleteItemsRequest(BaseModel):
+    item_ids: list[str]
+    reason: str = "Manual deletion"
+
+
+class DeleteClusterRequest(BaseModel):
+    cluster_id: int
+    keep_primary: bool = True
+    reason: str = "Cluster deletion"
 
 
 # ── Routes ────────────────────────────────────────────────────────────────
@@ -189,3 +200,33 @@ def explain_routing(query: str, budget_usd: float | None = None):
 def clear_cache_endpoint():
     cache_clear()
     return {"message": "Cache cleared successfully"}
+
+
+@app.get("/cache/items")
+def get_cache_items():
+    """Get all items currently cached"""
+    items = get_all_cached_items()
+    return {
+        "total_items": len(items),
+        "items": items,
+    }
+
+
+@app.get("/cache/summary")
+def cache_summary():
+    """Get cache statistics with similar prompt clustering"""
+    return get_cache_summary()
+
+
+@app.post("/cache/delete")
+def delete_items(req: DeleteItemsRequest):
+    """Delete specific cache items by ID"""
+    result = delete_cache_items(req.item_ids)
+    return result
+
+
+@app.post("/cache/delete-cluster")
+def delete_cluster_items(req: DeleteClusterRequest):
+    """Delete all items in a cluster (optionally keeping the primary query)"""
+    result = delete_cluster(req.cluster_id, req.keep_primary)
+    return result
