@@ -18,12 +18,12 @@ from datetime import datetime
 API_BASE_URL = "http://localhost:8000"
 
 st.set_page_config(
-    page_title="Semantic Cache + Model Cascade",
-    page_icon="🚀",
+    page_title="TokenMiser - Semantic Cache + Model Cascade",
+    page_icon="💰",
     layout="wide",
 )
 
-st.title("🚀 Semantic Cache + Model Cascade")
+st.title("💰 TokenMiser")
 st.markdown("Cost-optimized LLM responses with intelligent routing and caching")
 
 # ── Sidebar Configuration ─────────────────────────────────────────────────
@@ -86,12 +86,7 @@ if submit_button and user_query:
             )
             
             if response.status_code == 200:
-                try:
-                    result = response.json()
-                except ValueError:
-                    st.error(f"❌ Invalid response format from API")
-                    st.text(f"Response: {response.text[:500]}")
-                    st.stop()
+                result = response.json()
                 
                 # Display response
                 st.success("✅ Response received")
@@ -144,10 +139,7 @@ if submit_button and user_query:
                 
             else:
                 st.error(f"Error: {response.status_code}")
-                try:
-                    st.write(response.json())
-                except ValueError:
-                    st.text(f"Response: {response.text[:500]}")
+                st.write(response.json())
                 
         except requests.exceptions.Timeout:
             st.error("⏱️ Request timeout. API might be slow or unreachable.")
@@ -181,15 +173,7 @@ if explain_query:
         )
         
         if response.status_code == 200:
-            try:
-                routing = response.json()
-            except ValueError:
-                st.warning(f"Could not parse routing response")
-                st.text(f"Response: {response.text[:500]}")
-                routing = None
-            
-            if routing is None:
-                st.stop()
+            routing = response.json()
             
             col1, col2, col3 = st.columns(3)
             
@@ -228,26 +212,17 @@ try:
     metrics_response = requests.get(f"{API_BASE_URL}/metrics", timeout=15)
     
     if metrics_response.status_code == 200:
-        try:
-            metrics = metrics_response.json()
-        except ValueError:
-            st.error(f"❌ Invalid metrics response format")
-            st.text(f"Response: {metrics_response.text[:500]}")
-            st.stop()
+        metrics = metrics_response.json()
         
-        col1, col2, col3, col4 = st.columns(4)
+        col1, col2, col3 = st.columns(3)
         
         with col1:
             st.metric("Total Queries", metrics["total_queries"])
         
         with col2:
-            hit_rate = metrics["cache_hit_rate"]
-            st.metric("Cache Hit Rate", f"{hit_rate:.1%}")
-        
-        with col3:
             st.metric("Total Cost", f"${metrics['total_cost_usd']:.4f}")
         
-        with col4:
+        with col3:
             st.metric("Avg Latency", f"{metrics['avg_latency_ms']:.1f} ms")
         
         st.divider()
@@ -263,8 +238,6 @@ try:
         
         with col1:
             st.subheader("Cache Statistics")
-            st.write(f"- Hits: {metrics['cache_hits']}")
-            st.write(f"- Misses: {metrics['cache_misses']}")
             st.write(f"- Total Stored: {metrics['cache_total_stored']}")
         
         with col2:
@@ -281,214 +254,71 @@ except Exception as e:
 st.divider()
 st.header("🗑️ Cache Management")
 
-tab1, tab2, tab3 = st.tabs(["View Cache", "Smart Delete", "Clear All"])
+st.subheader("Cached Items")
 
-with tab1:
-    st.subheader("Cached Items")
-    
-    # Add refresh button
-    col1, col2 = st.columns([0.7, 0.3])
-    with col2:
-        if st.button("🔄 Refresh", key="refresh_cache"):
-            st.rerun()
-    
-    try:
-        response = requests.get(f"{API_BASE_URL}/cache/items", timeout=15)
-        if response.status_code == 200:
-            try:
-                cache_data = response.json()
-            except ValueError:
-                st.error(f"❌ Invalid cache response format")
-                st.text(f"Response: {response.text[:500]}")
-                st.stop()
-            total_items = cache_data["total_items"]
-            items = cache_data["items"]
-            
-            st.metric("Total Cached Items", total_items)
-            
-            if total_items == 0:
-                st.warning("⚠️ Cache is empty. Make some queries to populate the cache.")
-            else:
-                # Display as a dataframe table
-                if items:
-                    display_items = []
-                    for item in items:
-                        query_preview = item["query"][:60]
-                        if len(item["query"]) > 60:
-                            query_preview += "..."
-                        
-                        response_preview = item["response"][:80]
-                        if len(item["response"]) > 80:
-                            response_preview += "..."
-                        
-                        display_items.append({
-                            "Query": query_preview,
-                            "Response": response_preview,
-                            "Last Used": item["last_used_formatted"],
-                        })
-                    
-                    st.dataframe(display_items, use_container_width=True, hide_index=True)
-                    
-                    # Show full details on expander
-                    with st.expander("📋 View Full Details"):
-                        for idx, item in enumerate(items, 1):
-                            st.markdown(f"### Cache Item #{idx}")
-                            
-                            col1, col2 = st.columns(2)
-                            with col1:
-                                st.markdown("**Query:**")
-                                st.code(item["query"], language="text")
-                            with col2:
-                                st.markdown("**Last Used:**")
-                                st.info(item["last_used_formatted"])
-                            
-                            st.markdown("**Response:**")
-                            st.text_area("Response", value=item["response"], height=100, disabled=True, key=f"response_{idx}")
-                            st.divider()
+# Add refresh button
+col1, col2 = st.columns([0.7, 0.3])
+with col2:
+    if st.button("🔄 Refresh", key="refresh_cache"):
+        st.rerun()
+
+try:
+    response = requests.get(f"{API_BASE_URL}/cache/items", timeout=15)
+    if response.status_code == 200:
+        cache_data = response.json()
+        total_items = cache_data["total_items"]
+        items = cache_data["items"]
+        
+        st.metric("Total Cached Items", total_items)
+        
+        if total_items == 0:
+            st.warning("⚠️ Cache is empty. Make some queries to populate the cache.")
         else:
-            st.error(f"❌ API Error: {response.status_code}")
-            try:
-                st.json(response.json())
-            except:
-                st.text(f"Response body: {response.text}")
-            
-    except requests.exceptions.ConnectionError:
-        st.error("❌ Cannot connect to API. Make sure the backend is running on port 8000")
-    except Exception as e:
-        st.error(f"❌ Error loading cache: {str(e)}")
-        st.exception(e)
-
-
-with tab2:
-    st.subheader("Delete Similar Prompts by Cluster")
-    st.info("🔍 Similar prompts are grouped together. Optionally keep the primary query and delete duplicates.")
-    
-    try:
-        response = requests.get(f"{API_BASE_URL}/cache/summary", timeout=15)
-        if response.status_code == 200:
-            try:
-                summary = response.json()
-            except ValueError:
-                st.error(f"❌ Invalid summary response format")
-                st.text(f"Response: {response.text[:500]}")
-                st.stop()
-            total_items = summary["total_items"]
-            total_clusters = summary["total_clusters"]
-            clusters = summary["clusters"]
-            
-            col1, col2 = st.columns(2)
-            with col1:
-                st.metric("Total Items", total_items)
-            with col2:
-                st.metric("Similar Groups", total_clusters)
-            
-            if total_clusters == 0:
-                st.info("ℹ️ No clusters found. Add more queries to see similar prompts grouped.")
-            else:
-                st.write("---")
+            # Display as a dataframe table
+            if items:
+                display_items = []
+                for item in items:
+                    query_preview = item["query"][:60]
+                    if len(item["query"]) > 60:
+                        query_preview += "..."
+                    
+                    response_preview = item["response"][:80]
+                    if len(item["response"]) > 80:
+                        response_preview += "..."
+                    
+                    display_items.append({
+                        "Query": query_preview,
+                        "Response": response_preview,
+                        "Last Used": item["last_used_formatted"],
+                    })
                 
-                # Show each cluster
-                for cluster in clusters:
-                    cluster_id = cluster["cluster_id"]
-                    primary_query = cluster["primary_query"][:70]
-                    duplicate_count = cluster["duplicate_count"]
-                    avg_similarity = cluster["avg_similarity"]
-                    
-                    col1, col2, col3, col4 = st.columns([2, 1, 1, 1])
-                    
-                    with col1:
-                        st.markdown(f"**Primary Query:** {primary_query}")
-                    with col2:
-                        st.metric("Duplicates", duplicate_count, delta=None)
-                    with col3:
-                        st.metric("Avg Similarity", f"{avg_similarity:.2f}")
-                    with col4:
-                        if duplicate_count > 0:
-                            if st.button(f"🗑️ Remove Duplicates", key=f"delete_dups_{cluster_id}"):
-                                try:
-                                    delete_response = requests.post(
-                                        f"{API_BASE_URL}/cache/delete-cluster",
-                                        json={
-                                            "cluster_id": cluster_id,
-                                            "keep_primary": True,
-                                            "reason": "Deleted duplicates via smart filter"
-                                        },
-                                        timeout=15
-                                    )
-                                    if delete_response.status_code == 200:
-                                        result = delete_response.json()
-                                        if result.get("success"):
-                                            st.success(f"✅ Deleted {result['deleted_count']} duplicate(s)")
-                                            st.rerun()
-                                        else:
-                                            st.error(f"Delete failed: {result.get('error', 'Unknown error')}")
-                                    else:
-                                        st.error(f"Delete failed: {delete_response.status_code} - {delete_response.text[:200]}")
-                                except Exception as e:
-                                    st.error(f"Error: {str(e)}")
-                    
-                    # Show items in cluster
-                    with st.expander(f"📊 Show cluster items ({len(cluster['items'])} items)"):
-                        for item_idx, item in enumerate(cluster["items"]):
-                            item_col1, item_col2, item_col3 = st.columns([2, 1, 0.8])
-                            
-                            with item_col1:
-                                query_text = item["query"][:80]
-                                if len(item["query"]) > 80:
-                                    query_text += "..."
-                                st.caption(f"{item_idx + 1}. {query_text}")
-                            
-                            with item_col2:
-                                st.caption(item["last_used_formatted"])
-                            
-                            with item_col3:
-                                if st.button("❌", key=f"del_item_{item['id']}", help="Delete this item"):
-                                    try:
-                                        del_resp = requests.post(
-                                            f"{API_BASE_URL}/cache/delete",
-                                            json={"item_ids": [item["id"]]},
-                                            timeout=15
-                                        )
-                                        if del_resp.status_code == 200:
-                                            result = del_resp.json()
-                                            if result.get("success"):
-                                                st.success("✅ Deleted")
-                                                st.rerun()
-                                            else:
-                                                st.error(f"Error: {result.get('error', 'Unknown error')}")
-                                        else:
-                                            st.error(f"Delete failed: {del_resp.status_code} - {del_resp.text[:200]}")
-                                    except Exception as e:
-                                        st.error(f"Error: {str(e)}")
-                    
-                    st.divider()
-        else:
-            st.error(f"❌ Failed to load clusters: {response.status_code}")
-            
-    except requests.exceptions.ConnectionError:
-        st.error("❌ Cannot connect to API")
-    except Exception as e:
-        st.error(f"❌ Error: {str(e)}")
-        st.exception(e)
-
-
-with tab3:
-    st.subheader("Clear All Cache")
-    st.warning("⚠️ This will permanently delete ALL cached items!")
-    
-    if st.button("🗑️ Clear All Cache", type="secondary"):
-        try:
-            response = requests.delete(f"{API_BASE_URL}/cache/clear", timeout=15)
-            if response.status_code == 200:
-                result = response.json()
-                st.success("✅ Cache cleared successfully")
-                st.rerun()
-            else:
-                st.error(f"Error: {response.status_code} - {response.text[:200]}")
-        except Exception as e:
-            st.error(f"Failed to clear cache: {str(e)}")
-    
-    st.info("ℹ️ Clearing the cache will remove all cached responses but won't affect metrics history.")
+                st.dataframe(display_items, use_container_width=True, hide_index=True)
+                
+                # Show full details on expander
+                with st.expander("📋 View Full Details"):
+                    for idx, item in enumerate(items, 1):
+                        st.markdown(f"### Cache Item #{idx}")
+                        
+                        col1, col2 = st.columns(2)
+                        with col1:
+                            st.markdown("**Query:**")
+                            st.code(item["query"], language="text")
+                        with col2:
+                            st.markdown("**Last Used:**")
+                            st.info(item["last_used_formatted"])
+                        
+                        st.markdown("**Response:**")
+                        st.text_area("Response", value=item["response"], height=100, disabled=True, key=f"response_{idx}")
+                        st.divider()
+    else:
+        st.error(f"❌ API Error: {response.status_code}")
+        st.json(response.json())
+        
+except requests.exceptions.ConnectionError:
+    st.error("❌ Cannot connect to API. Make sure the backend is running on port 8000")
+except Exception as e:
+    st.error(f"❌ Error loading cache: {str(e)}")
+    st.exception(e)
 
 
 # ── Footer ───────────────────────────────────────────────────────────────

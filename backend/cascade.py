@@ -21,10 +21,6 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import Optional
 from groq import Groq
-from dotenv import load_dotenv
-
-# Load environment variables
-load_dotenv()
 
 # ── Logging ────────────────────────────────────────────────────────────────
 logging.basicConfig(level=logging.INFO)
@@ -473,6 +469,62 @@ class CascadeMetrics:
             "avg_latency_ms":  round(self.avg_latency_ms, 1),
             "errors":          self.errors,
         }
+
+
+# ══════════════════════════════════════════════════════════════════════════
+# 7.  INTEGRATION HELPER  (drop-in for main.py)
+# ══════════════════════════════════════════════════════════════════════════
+
+def handle_cache_miss(
+    query:          str,
+    router:         CascadeRouter,
+    metrics:        CascadeMetrics,
+    budget_usd:     float = None,
+    system_prompt:  str   = "You are a helpful assistant.",
+) -> CascadeResponse:
+    """
+    Call this from main.py whenever cache.py returns a MISS.
+    
+    Handles:
+      1. Score the query
+      2. Route to best-fit model
+      3. Call the LLM
+      4. Record metrics
+      5. Return response
+    
+    Returns a CascadeResponse with all fields populated.
+    """
+    try:
+        # Use the router to score, select model, and call API
+        resp = router.route(
+            query          = query,
+            system_prompt  = system_prompt,
+            budget_usd     = budget_usd,
+            stream         = False,
+        )
+        
+        # Record in metrics
+        metrics.record(resp)
+        
+        return resp
+        
+    except Exception as e:
+        # Return error response on failure
+        logger.error(f"Cache miss routing failed: {e}")
+        return CascadeResponse(
+            answer        = f"Error: {str(e)}",
+            model_used    = "error",
+            tier          = "error",
+            smart_score   = 0.0,
+            sub_scores    = {},
+            signals       = [],
+            input_tokens  = 0,
+            output_tokens = 0,
+            latency_ms    = 0.0,
+            cost_usd      = 0.0,
+            cache_hit     = False,
+            error         = str(e),
+        )
 
 
 # ══════════════════════════════════════════════════════════════════════════
